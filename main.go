@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+// LogEntry represents a single log entry from the audit.log file
 type LogEntry struct {
 	LogLevel  string          `json:"log_level"`
 	Stage     string          `json:"stage"`
@@ -18,6 +19,7 @@ type LogEntry struct {
 	Operation OperationRecord `json:"operation"`
 }
 
+// OperationRecord represents the operation record from a log entry
 type OperationRecord struct {
 	Host             string `json:"host"`
 	Source           string `json:"source"`
