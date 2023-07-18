@@ -8,15 +8,17 @@ import (
 	"log"
 	"os"
 	"strings"
-	"syscall"
 )
 
-// LogEntry represents a single log entry
 type LogEntry struct {
-	LogLevel         string `json:"log_level"`
-	Stage            string `json:"stage"`
-	DateTime         string `json:"date_time"`
-	Class            string `json:"class"`
+	LogLevel  string          `json:"log_level"`
+	Stage     string          `json:"stage"`
+	DateTime  string          `json:"date_time"`
+	Class     string          `json:"class"`
+	Operation OperationRecord `json:"operation"`
+}
+
+type OperationRecord struct {
 	Host             string `json:"host"`
 	Source           string `json:"source"`
 	User             string `json:"user"`
@@ -40,18 +42,20 @@ func main() {
 	file, err := os.Open(auditLogPath)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
-		syscall.Exit(1)
+		os.Exit(1)
 	}
 	defer func() {
-		err = file.Close()
-		if err != nil {
+		if err = file.Close(); err != nil {
 			log.Printf("Error closing file: %v", err)
-			syscall.Exit(2)
+			os.Exit(2)
 		}
 	}()
 
 	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 10*1024*1024)
 	scanner.Split(bufio.ScanLines)
+
 	for scanner.Scan() {
 		logEntry := LogEntry{}
 		line := scanner.Text()
@@ -63,7 +67,12 @@ func main() {
 		logEntry.Class = spaceFields[4]
 
 		pipeFields := strings.Split(line, "|")
-		for _, field := range pipeFields {
+		for i, field := range pipeFields {
+			if strings.Contains(field, " - host:/") {
+				fieldParts := strings.Split(field, " - ")
+				field = fieldParts[1]
+				pipeFields[i] = field
+			}
 			keyValue := strings.SplitN(field, ":", 2)
 			if len(keyValue) < 2 {
 				continue
@@ -73,44 +82,44 @@ func main() {
 
 			switch key {
 			case "host":
-				logEntry.Host = strings.TrimPrefix(value, "/")
+				logEntry.Operation.Host = strings.TrimPrefix(value, "/")
 			case "source":
-				logEntry.Source = strings.TrimLeft(value, "/")
+				logEntry.Operation.Source = strings.TrimPrefix(value, "/")
 			case "user":
-				logEntry.User = value
+				logEntry.Operation.User = value
 			case "authenticated":
-				logEntry.Authenticated = value
+				logEntry.Operation.Authenticated = value
 			case "timestamp":
-				logEntry.Timestamp = value
+				logEntry.Operation.Timestamp = value
 			case "category":
-				logEntry.Category = value
+				logEntry.Operation.Category = value
 			case "type":
-				logEntry.Type = value
+				logEntry.Operation.Type = value
 			case "batch":
-				logEntry.Batch = value
+				logEntry.Operation.Batch = value
 			case "ks":
-				logEntry.KS = value
+				logEntry.Operation.KS = value
 			case "cf":
-				logEntry.CF = value
+				logEntry.Operation.CF = value
 			case "operation":
 				opMsgIdx := strings.Index(value, ".")
-				logEntry.OperationMessage = strings.TrimRight(value[:opMsgIdx+1], ".")
-				logEntry.Operation = strings.TrimLeft(value[opMsgIdx+2:], ".")
+				logEntry.Operation.OperationMessage = strings.TrimRight(value[:opMsgIdx+1], ".")
+				logEntry.Operation.Operation = strings.TrimLeft(value[opMsgIdx+2:], ".")
 			case "consistency level":
-				logEntry.ConsistencyLevel = value
+				logEntry.Operation.ConsistencyLevel = value
 			}
 		}
 
 		jsonData, err := json.MarshalIndent(logEntry, "", "\t")
 		if err != nil {
 			log.Printf("Error marshalling JSON: %v", err)
-			syscall.Exit(3)
+			os.Exit(3)
 		}
 		fmt.Println(string(jsonData))
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Printf("Error scanning file: %v", err)
-		syscall.Exit(4)
+		os.Exit(4)
 	}
 }
