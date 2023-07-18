@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"syscall"
 )
 
 // LogEntry represents a single log entry
@@ -38,9 +39,16 @@ func main() {
 
 	file, err := os.Open(auditLogPath)
 	if err != nil {
-		panic(err)
+		log.Printf("Error opening file: %v", err)
+		syscall.Exit(1)
 	}
-	defer file.Close()
+	defer func() {
+		err = file.Close()
+		if err != nil {
+			log.Printf("Error closing file: %v", err)
+			syscall.Exit(2)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	scanner.Split(bufio.ScanLines)
@@ -95,12 +103,14 @@ func main() {
 
 		jsonData, err := json.MarshalIndent(logEntry, "", "\t")
 		if err != nil {
-			panic(err)
+			log.Printf("Error marshalling JSON: %v", err)
+			syscall.Exit(3)
 		}
 		fmt.Println(string(jsonData))
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		log.Printf("Error scanning file: %v", err)
+		syscall.Exit(4)
 	}
 }
